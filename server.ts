@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -46,7 +47,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+// El puerto lo asigna el proveedor (Hostinger) por variable de entorno.
+const PORT = Number(process.env.PORT) || 3000;
 
 // Los videos/portadas en base64 pueden ser grandes.
 app.use(express.json({ limit: '25mb' }));
