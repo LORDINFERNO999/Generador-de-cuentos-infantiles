@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   generateKidsStoryAI,
+  generateNarrationAudioAI,
   generateSceneImageAI,
   generateSocialMetaAI,
 } from './src/server/geminiService.js';
@@ -53,6 +54,15 @@ app.post('/api/gemini/generate-meta', async (req, res) => {
     res.json({ success: true, platforms });
   } catch (error: any) {
     res.status(500).json({ error: error?.message || 'Error generando la metadata' });
+  }
+});
+
+app.post('/api/gemini/generate-audio', async (req, res) => {
+  try {
+    const audio = await generateNarrationAudioAI(req.body.text || '', req.body.voiceName);
+    res.json({ success: true, audio });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Error generando la narración' });
   }
 });
 

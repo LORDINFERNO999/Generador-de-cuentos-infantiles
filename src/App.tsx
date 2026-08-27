@@ -3,9 +3,10 @@
 // Flujo: Crear -> (generar guion + imágenes) -> Ver -> Preparar/Publicar.
 // ============================================================
 
-import { AlertTriangle, BookOpenText, CalendarDays, Film, Link as LinkIcon, Share2 } from 'lucide-react';
+import { AlertTriangle, BookOpenText, CalendarDays, Film, Link as LinkIcon, Mic, Share2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { FinalPanel } from './components/FinalPanel';
+import { MusicPicker } from './components/MusicPicker';
 import { StoryForm } from './components/StoryForm';
 import { StoryViewer } from './components/StoryViewer';
 import { CalendarView } from './components/social/CalendarView';
@@ -19,6 +20,11 @@ import {
   generateStory,
   getSocialStatus,
 } from './services/api';
+import {
+  generateStoryNarration,
+  makeVoiceForScene,
+  type NarrationMap,
+} from './services/audio';
 import { loadVoices } from './services/speech';
 import { saveStory } from './services/storage';
 import {
@@ -56,6 +62,11 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 
+  const [narration, setNarration] = useState<NarrationMap | null>(null);
+  const [narrating, setNarrating] = useState(false);
+  const [narrationStatus, setNarrationStatus] = useState('');
+  const [musicUrl, setMusicUrl] = useState('');
+
   const [socialPackage, setSocialPackage] = useState<SocialPackage | null>(null);
   const [accounts, setAccounts] = useState<AccountConnection[]>([]);
   const [publishDialog, setPublishDialog] = useState<{
@@ -83,6 +94,7 @@ export default function App() {
     setGenerating(true);
     setVideo(null);
     setSocialPackage(null);
+    setNarration(null);
     setGenStatus('Escribiendo el guion del cuento...');
 
     try {
@@ -117,6 +129,27 @@ export default function App() {
     if (lastRequest.current) handleGenerate(lastRequest.current);
   };
 
+  // ---- Narración por voz IA ----
+  const handleGenerateNarration = async () => {
+    if (!story) return;
+    setNarrating(true);
+    setError(null);
+    try {
+      const voiceForScene = makeVoiceForScene(story);
+      const map = await generateStoryNarration(story, voiceForScene, (i, total) =>
+        setNarrationStatus(`Generando voz ${i} de ${total}...`)
+      );
+      setNarration(map);
+      // El video exportado quedará obsoleto: hay que rehacerlo con la voz.
+      setVideo(null);
+    } catch (e: any) {
+      setError(e?.message || 'No se pudieron generar las voces.');
+    } finally {
+      setNarrating(false);
+      setNarrationStatus('');
+    }
+  };
+
   // ---- Exportar video ----
   const handleExport = async (): Promise<ExportedVideo | null> => {
     if (!story) return null;
@@ -124,6 +157,8 @@ export default function App() {
     setError(null);
     try {
       const result = await exportStoryVideo(story, {
+        narration,
+        musicUrl: musicUrl || undefined,
         onProgress: setExportProgress,
       });
       const exported = { url: result.url, mimeType: result.mimeType };
@@ -259,7 +294,7 @@ export default function App() {
                       <Spinner label={genStatus} />
                     </Card>
                   )}
-                  <StoryViewer story={story} />
+                  <StoryViewer story={story} narration={narration} musicUrl={musicUrl || undefined} />
                 </div>
                 <div className="space-y-4">
                   <FinalPanel
@@ -272,6 +307,40 @@ export default function App() {
                     exporting={exporting}
                     hasVideo={Boolean(video)}
                   />
+
+                  {/* Audio: voces IA + música */}
+                  <Card className="space-y-4">
+                    <div>
+                      <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <Mic className="h-4 w-4" /> Narración con voz IA
+                      </p>
+                      <p className="mb-2 text-xs text-slate-500">
+                        Genera voces reales por personaje. Se oyen en la vista previa y se
+                        incrustan en el MP4 exportado.
+                      </p>
+                      <Button
+                        variant={narration ? 'secondary' : 'primary'}
+                        onClick={handleGenerateNarration}
+                        loading={narrating}
+                        disabled={narrating || generating || geminiAvailable === false}
+                      >
+                        <Mic className="h-5 w-5" />
+                        {narration ? 'Regenerar voces' : 'Generar voces IA'}
+                      </Button>
+                      {narrating && narrationStatus && (
+                        <p className="mt-2 text-xs text-slate-500">{narrationStatus}</p>
+                      )}
+                      {narration && !narrating && (
+                        <p className="mt-2 text-xs font-semibold text-emerald-600">
+                          ✅ Voces listas ({narration.size} escenas)
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-4">
+                      <MusicPicker onChange={setMusicUrl} />
+                    </div>
+                  </Card>
 
                   {exporting && exportProgress && (
                     <Card>

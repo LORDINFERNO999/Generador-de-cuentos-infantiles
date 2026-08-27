@@ -9,6 +9,7 @@
 // ============================================================
 
 import type { Scene, Story } from '../types';
+import { decodeNarration, type NarrationMap } from './audio';
 
 export const VIDEO_WIDTH = 1080;
 export const VIDEO_HEIGHT = 1920;
@@ -188,6 +189,8 @@ export async function exportStoryVideo(
   story: Story,
   options: {
     musicUrl?: string;
+    /** Narración TTS por escena (se incrusta en el audio del video). */
+    narration?: NarrationMap | null;
     fps?: number;
     onProgress?: (p: ExportProgress) => void;
     signal?: AbortSignal;
@@ -212,26 +215,46 @@ export async function exportStoryVideo(
 
   const stream = canvas.captureStream(fps);
 
-  // Música de fondo opcional mezclada en la pista de audio.
-  let audioContext: AudioContext | null = null;
+  // --- Audio: mezclamos narración (TTS) + música en una sola pista ---
+  const AudioCtor =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const audioContext = new AudioCtor();
+  const dest = audioContext.createMediaStreamDestination();
+  dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
+
+  // Decodificar la narración de cada escena en este contexto.
+  const sceneBuffers = new Map<string, AudioBuffer>();
+  if (options.narration) {
+    for (const scene of scenes) {
+      const raw = options.narration.get(scene.id);
+      if (raw) {
+        try {
+          sceneBuffers.set(scene.id, decodeNarration(audioContext, raw));
+        } catch {
+          // omitimos esta escena si falla la decodificación
+        }
+      }
+    }
+  }
+
+  // Música de fondo opcional (a volumen bajo bajo la narración).
   let audioEl: HTMLAudioElement | null = null;
   if (options.musicUrl) {
     try {
-      audioContext = new AudioContext();
       audioEl = new Audio(options.musicUrl);
       audioEl.crossOrigin = 'anonymous';
       audioEl.loop = true;
-      const source = audioContext.createMediaElementSource(audioEl);
-      const dest = audioContext.createMediaStreamDestination();
-      const gain = audioContext.createGain();
-      gain.gain.value = 0.5;
-      source.connect(gain).connect(dest);
-      dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
-      await audioEl.play().catch(() => undefined);
+      const musicSource = audioContext.createMediaElementSource(audioEl);
+      const musicGain = audioContext.createGain();
+      musicGain.gain.value = sceneBuffers.size ? 0.18 : 0.4;
+      musicSource.connect(musicGain).connect(dest);
     } catch {
-      // Si falla el audio, se exporta solo con video.
+      // Si falla la música, se exporta solo con narración.
     }
   }
+
+  await audioContext.resume().catch(() => undefined);
 
   const { mimeType, extension } = pickMimeType();
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
@@ -245,12 +268,25 @@ export async function exportStoryVideo(
   });
 
   recorder.start();
+  if (audioEl) await audioEl.play().catch(() => undefined);
 
-  // Renderizado escena por escena.
+  // Renderizado escena por escena. La duración sigue a la narración si existe.
   for (let i = 0; i < scenes.length; i++) {
     if (options.signal?.aborted) break;
     options.onProgress?.({ sceneIndex: i, totalScenes: scenes.length, phase: 'grabando' });
-    await renderScene(ctx, scenes[i], images[i], i, story, options.signal);
+
+    const buffer = sceneBuffers.get(scenes[i].id);
+    let durationMs = Math.max(2000, scenes[i].durationSec * 1000);
+    if (buffer) {
+      // Reproducimos la narración de esta escena y ajustamos la duración.
+      const src = audioContext.createBufferSource();
+      src.buffer = buffer;
+      src.connect(dest);
+      src.start();
+      durationMs = buffer.duration * 1000 + 400; // pequeña cola tras la voz
+    }
+
+    await renderScene(ctx, scenes[i], images[i], i, story, durationMs, options.signal);
   }
 
   options.onProgress?.({
@@ -263,28 +299,24 @@ export async function exportStoryVideo(
   const blob = await done;
 
   // Limpieza de audio.
-  if (audioEl) {
-    audioEl.pause();
-  }
-  if (audioContext) {
-    await audioContext.close().catch(() => undefined);
-  }
+  if (audioEl) audioEl.pause();
+  await audioContext.close().catch(() => undefined);
 
   const url = URL.createObjectURL(blob);
   return { blob, url, mimeType, extension };
 }
 
-/** Renderiza una escena durante su duración con una animación de zoom suave. */
+/** Renderiza una escena durante la duración indicada con animación de zoom. */
 function renderScene(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
   img: HTMLImageElement | null,
   index: number,
   story: Story,
+  durationMs: number,
   signal?: AbortSignal
 ): Promise<void> {
   return new Promise((resolve) => {
-    const durationMs = Math.max(2000, scene.durationSec * 1000);
     const start = performance.now();
 
     const frame = (now: number) => {

@@ -30,6 +30,37 @@ export interface SocialMetaPayload {
 
 const TEXT_MODEL = 'gemini-2.5-flash';
 const IMAGE_MODEL = 'imagen-4.0-generate-001';
+const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+
+/**
+ * Voces prebuilt de Gemini TTS disponibles. Mapeamos un "tono" a una voz
+ * concreta para dar personalidad a cada personaje.
+ * https://ai.google.dev/gemini-api/docs/speech-generation
+ */
+export const TTS_VOICES = [
+  { name: 'Zephyr', tone: 'brillante y alegre' },
+  { name: 'Puck', tone: 'juguetona y animada' },
+  { name: 'Kore', tone: 'firme y clara' },
+  { name: 'Charon', tone: 'grave y calmada' },
+  { name: 'Fenrir', tone: 'fuerte y aventurera' },
+  { name: 'Aoede', tone: 'dulce y musical' },
+  { name: 'Leda', tone: 'juvenil y tierna' },
+  { name: 'Orus', tone: 'seria y narradora' },
+] as const;
+
+/** Elige una voz razonable a partir de un tono descrito por la IA. */
+export function pickVoiceForTone(tone?: string): string {
+  if (!tone) return 'Aoede';
+  const t = tone.toLowerCase();
+  if (t.includes('grav') || t.includes('profund')) return 'Charon';
+  if (t.includes('agud') || t.includes('alegr') || t.includes('brillante')) return 'Zephyr';
+  if (t.includes('juguet') || t.includes('divertid')) return 'Puck';
+  if (t.includes('fuerte') || t.includes('aventur')) return 'Fenrir';
+  if (t.includes('tiern') || t.includes('dulce') || t.includes('suave')) return 'Aoede';
+  if (t.includes('narrad') || t.includes('seria')) return 'Orus';
+  if (t.includes('firme') || t.includes('clara')) return 'Kore';
+  return 'Leda';
+}
 
 let cachedClient: GoogleGenAI | null = null;
 
@@ -192,6 +223,64 @@ export async function generateSceneImageAI(prompt: string): Promise<string> {
     throw new Error('Gemini no devolvió ninguna imagen.');
   }
   return `data:image/png;base64,${generated}`;
+}
+
+// ------------------------------------------------------------
+// 2b. Narración por voz real (Gemini TTS)
+// ------------------------------------------------------------
+
+export interface NarrationAudio {
+  /** Audio PCM 16-bit en base64. */
+  base64: string;
+  /** Frecuencia de muestreo (Hz), normalmente 24000. */
+  sampleRate: number;
+  /** Nº de canales (normalmente 1). */
+  channels: number;
+}
+
+/** Extrae la frecuencia de muestreo de un mimeType tipo "audio/L16;rate=24000". */
+function parseSampleRate(mimeType?: string): number {
+  const match = mimeType?.match(/rate=(\d+)/);
+  return match ? Number(match[1]) : 24000;
+}
+
+/**
+ * Genera la narración por voz de un texto usando el modelo TTS de Gemini.
+ * Devuelve audio PCM crudo (16-bit) en base64 para incrustarlo en el video.
+ */
+export async function generateNarrationAudioAI(
+  text: string,
+  voiceName?: string
+): Promise<NarrationAudio> {
+  if (!text || !text.trim()) {
+    throw new Error('El texto de la narración está vacío.');
+  }
+  const ai = getClient();
+
+  const response = await ai.models.generateContent({
+    model: TTS_MODEL,
+    contents: text,
+    config: {
+      responseModalities: ['AUDIO'],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: voiceName || 'Aoede' },
+        },
+      },
+    },
+  });
+
+  const part = response.candidates?.[0]?.content?.parts?.[0];
+  const inline = part?.inlineData;
+  if (!inline?.data) {
+    throw new Error('Gemini TTS no devolvió audio.');
+  }
+
+  return {
+    base64: inline.data,
+    sampleRate: parseSampleRate(inline.mimeType),
+    channels: 1,
+  };
 }
 
 // ------------------------------------------------------------

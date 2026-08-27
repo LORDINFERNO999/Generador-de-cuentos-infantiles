@@ -4,6 +4,7 @@ import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
 import {
   generateKidsStoryAI,
+  generateNarrationAudioAI,
   generateSceneImageAI,
   generateSocialMetaAI,
 } from './src/server/geminiService';
@@ -71,6 +72,12 @@ function apiServerPlugin(): Plugin {
             const body = await parseBody();
             const platforms = await generateSocialMetaAI(body);
             return send(200, { success: true, platforms });
+          }
+
+          if (url === '/api/gemini/generate-audio' && req.method === 'POST') {
+            const body = await parseBody();
+            const audio = await generateNarrationAudioAI(body.text || '', body.voiceName);
+            return send(200, { success: true, audio });
           }
 
           // ----- Redes sociales -----

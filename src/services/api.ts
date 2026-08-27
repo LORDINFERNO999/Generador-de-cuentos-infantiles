@@ -83,6 +83,18 @@ export async function generateStory(req: StoryRequest): Promise<Story> {
   return story;
 }
 
+/** Genera la narración por voz (TTS de Gemini) de un texto. */
+export async function generateNarrationAudio(
+  text: string,
+  voiceName?: string
+): Promise<{ base64: string; sampleRate: number; channels: number }> {
+  const data = await postJson<{
+    success: boolean;
+    audio: { base64: string; sampleRate: number; channels: number };
+  }>('/api/gemini/generate-audio', { text, voiceName });
+  return data.audio;
+}
+
 /** Genera la ilustración de una escena y devuelve un dataURL. */
 export async function generateSceneImage(prompt: string): Promise<string> {
   const data = await postJson<{ success: boolean; imageUrl: string }>(
