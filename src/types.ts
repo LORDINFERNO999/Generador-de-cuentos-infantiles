@@ -23,10 +23,23 @@ export interface Character {
   name: string;
   /** Descripción física detallada para reutilizarse en cada prompt de imagen. */
   description: string;
-  /** Voz asignada (nombre técnico de la voz del navegador, si existe). */
+  /** Voz asignada (nombre de la voz TTS de Gemini). */
   voiceName?: string;
   /** Tono de voz sugerido para la narración. */
   voiceTone?: string;
+  /** DataURL de la hoja de referencia visual (para consistencia entre escenas). */
+  referenceImage?: string;
+}
+
+/** Personaje guardado en la galería para reutilizar en otros cuentos. */
+export interface SavedCharacter {
+  id: string;
+  name: string;
+  description: string;
+  voiceName?: string;
+  voiceTone?: string;
+  referenceImage?: string;
+  createdAt: number;
 }
 
 /** Una escena individual del cuento (una "toma" del video vertical). */

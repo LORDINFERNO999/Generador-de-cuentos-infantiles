@@ -2,9 +2,9 @@
 // Formulario de creación de cuentos + modo Reel/Short (spec 46).
 // ============================================================
 
-import { Sparkles, Wand2 } from 'lucide-react';
+import { Sparkles, Wand2, X } from 'lucide-react';
 import { useState } from 'react';
-import type { AgeRange, ArtStyle, StoryRequest } from '../types';
+import type { AgeRange, ArtStyle, SavedCharacter, StoryRequest } from '../types';
 import { Button, Card, SectionTitle } from './ui';
 
 const AGE_OPTIONS: { value: AgeRange; label: string }[] = [
@@ -27,9 +27,18 @@ interface Props {
   onGenerate: (req: StoryRequest) => void;
   loading: boolean;
   disabled?: boolean;
+  /** Personajes reutilizados desde la galería (se inyectan en el prompt). */
+  reusedCharacters?: SavedCharacter[];
+  onRemoveReused?: (id: string) => void;
 }
 
-export function StoryForm({ onGenerate, loading, disabled }: Props) {
+export function StoryForm({
+  onGenerate,
+  loading,
+  disabled,
+  reusedCharacters = [],
+  onRemoveReused,
+}: Props) {
   const [theme, setTheme] = useState('');
   const [moral, setMoral] = useState('');
   const [ageRange, setAgeRange] = useState<AgeRange>('4-6');
@@ -40,14 +49,20 @@ export function StoryForm({ onGenerate, loading, disabled }: Props) {
 
   const canSubmit = theme.trim().length > 2 && !loading && !disabled;
 
+  // Si se reutilizan personajes, sus descripciones se añaden al prompt.
+  const reusedText = reusedCharacters
+    .map((c) => `${c.name}: ${c.description}`)
+    .join('. ');
+
   const submit = () => {
     if (!canSubmit) return;
+    const hints = [characterHints.trim(), reusedText].filter(Boolean).join('. ');
     onGenerate({
       theme: theme.trim(),
       moral: moral.trim() || undefined,
       ageRange,
       artStyle,
-      characterHints: characterHints.trim() || undefined,
+      characterHints: hints || undefined,
       sceneCount,
       reelMode,
       language: 'español',
@@ -101,6 +116,23 @@ export function StoryForm({ onGenerate, loading, disabled }: Props) {
             placeholder="Ej: Rita la conejita, Tom el erizo"
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
           />
+          {reusedCharacters.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {reusedCharacters.map((c) => (
+                <span
+                  key={c.id}
+                  className="flex items-center gap-1 rounded-full bg-fuchsia-100 px-3 py-1 text-xs font-semibold text-fuchsia-700"
+                >
+                  🎭 {c.name}
+                  {onRemoveReused && (
+                    <button onClick={() => onRemoveReused(c.id)} title="Quitar">
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Edad */}

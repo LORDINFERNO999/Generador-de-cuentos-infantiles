@@ -95,11 +95,30 @@ export async function generateNarrationAudio(
   return data.audio;
 }
 
-/** Genera la ilustración de una escena y devuelve un dataURL. */
-export async function generateSceneImage(prompt: string): Promise<string> {
+/**
+ * Genera la ilustración de una escena y devuelve un dataURL.
+ * Si se pasan imágenes de referencia (dataURLs), mantiene la consistencia
+ * del personaje entre escenas.
+ */
+export async function generateSceneImage(
+  prompt: string,
+  referenceImages?: string[]
+): Promise<string> {
   const data = await postJson<{ success: boolean; imageUrl: string }>(
     '/api/gemini/generate-image',
-    { prompt }
+    { prompt, referenceImages }
+  );
+  return data.imageUrl;
+}
+
+/** Genera una hoja de referencia del personaje (dataURL) para consistencia. */
+export async function generateCharacterReference(
+  description: string,
+  artStyle: string
+): Promise<string> {
+  const data = await postJson<{ success: boolean; imageUrl: string }>(
+    '/api/gemini/generate-reference',
+    { description, artStyle }
   );
   return data.imageUrl;
 }

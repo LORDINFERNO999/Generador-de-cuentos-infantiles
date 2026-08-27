@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
+  generateCharacterReferenceAI,
   generateKidsStoryAI,
   generateNarrationAudioAI,
   generateSceneImageAI,
@@ -41,10 +42,22 @@ app.post('/api/gemini/generate-story', async (req, res) => {
 
 app.post('/api/gemini/generate-image', async (req, res) => {
   try {
-    const imageUrl = await generateSceneImageAI(req.body.prompt || '');
+    const imageUrl = await generateSceneImageAI(req.body.prompt || '', req.body.referenceImages);
     res.json({ success: true, imageUrl });
   } catch (error: any) {
     res.status(500).json({ error: error?.message || 'Error generando la imagen' });
+  }
+});
+
+app.post('/api/gemini/generate-reference', async (req, res) => {
+  try {
+    const imageUrl = await generateCharacterReferenceAI(
+      req.body.description || '',
+      req.body.artStyle || ''
+    );
+    res.json({ success: true, imageUrl });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Error generando la referencia' });
   }
 });
 

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
 import {
+  generateCharacterReferenceAI,
   generateKidsStoryAI,
   generateNarrationAudioAI,
   generateSceneImageAI,
@@ -64,7 +65,16 @@ function apiServerPlugin(): Plugin {
 
           if (url === '/api/gemini/generate-image' && req.method === 'POST') {
             const body = await parseBody();
-            const imageUrl = await generateSceneImageAI(body.prompt || '');
+            const imageUrl = await generateSceneImageAI(body.prompt || '', body.referenceImages);
+            return send(200, { success: true, imageUrl });
+          }
+
+          if (url === '/api/gemini/generate-reference' && req.method === 'POST') {
+            const body = await parseBody();
+            const imageUrl = await generateCharacterReferenceAI(
+              body.description || '',
+              body.artStyle || ''
+            );
             return send(200, { success: true, imageUrl });
           }
 

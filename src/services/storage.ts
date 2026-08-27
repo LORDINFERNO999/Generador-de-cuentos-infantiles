@@ -3,10 +3,11 @@
 // y cuentos guardados. NUNCA se guardan tokens ni contraseñas aquí.
 // ============================================================
 
-import type { CalendarEntry, Story } from '../types';
+import type { CalendarEntry, SavedCharacter, Story } from '../types';
 
 const CALENDAR_KEY = 'cuentos_calendar_v1';
 const STORIES_KEY = 'cuentos_stories_v1';
+const CHARACTERS_KEY = 'cuentos_characters_v1';
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -69,4 +70,26 @@ export function saveStory(story: Story): void {
 export function deleteStory(id: string): void {
   const stories = read<Story[]>(STORIES_KEY, []).filter((s) => s.id !== id);
   write(STORIES_KEY, stories);
+}
+
+// -------- Personajes reutilizables (galería) --------
+
+export function getSavedCharacters(): SavedCharacter[] {
+  return read<SavedCharacter[]>(CHARACTERS_KEY, []).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function saveCharacter(character: SavedCharacter): void {
+  const chars = read<SavedCharacter[]>(CHARACTERS_KEY, []);
+  const idx = chars.findIndex((c) => c.id === character.id);
+  if (idx >= 0) {
+    chars[idx] = character;
+  } else {
+    chars.push(character);
+  }
+  write(CHARACTERS_KEY, chars);
+}
+
+export function deleteCharacter(id: string): void {
+  const chars = read<SavedCharacter[]>(CHARACTERS_KEY, []).filter((c) => c.id !== id);
+  write(CHARACTERS_KEY, chars);
 }

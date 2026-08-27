@@ -30,6 +30,8 @@ export interface SocialMetaPayload {
 
 const TEXT_MODEL = 'gemini-2.5-flash';
 const IMAGE_MODEL = 'imagen-4.0-generate-001';
+// Modelo de imagen que acepta imágenes de entrada (para consistencia por referencia).
+const IMAGE_EDIT_MODEL = 'gemini-2.5-flash-image';
 const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 
 /**
@@ -200,8 +202,24 @@ export async function generateKidsStoryAI(payload: StoryRequestPayload) {
 // 2. Generación de la imagen de una escena
 // ------------------------------------------------------------
 
-/** Genera una ilustración vertical 9:16 para una escena y la devuelve como dataURL. */
-export async function generateSceneImageAI(prompt: string): Promise<string> {
+/** Quita el prefijo dataURL y devuelve solo el base64. */
+function stripDataUrl(dataUrl: string): { base64: string; mimeType: string } {
+  const match = dataUrl.match(/^data:(.*?);base64,(.*)$/);
+  if (match) return { mimeType: match[1], base64: match[2] };
+  return { mimeType: 'image/png', base64: dataUrl };
+}
+
+/**
+ * Genera una ilustración vertical 9:16 para una escena y la devuelve como dataURL.
+ *
+ * Si se pasan `referenceImages` (dataURLs), usa el modelo de imagen de Gemini
+ * que acepta imágenes de entrada, para mantener el personaje visualmente
+ * consistente entre escenas. Si no, usa Imagen (mayor calidad base).
+ */
+export async function generateSceneImageAI(
+  prompt: string,
+  referenceImages?: string[]
+): Promise<string> {
   if (!prompt || !prompt.trim()) {
     throw new Error('El prompt de la imagen está vacío.');
   }
@@ -209,6 +227,34 @@ export async function generateSceneImageAI(prompt: string): Promise<string> {
 
   const finalPrompt = `${prompt}. Children's book illustration, vertical 9:16 composition, bright friendly colors, soft lighting, no text, safe for kids.`;
 
+  // --- Con referencia: modelo de imagen editable (consistencia de personaje) ---
+  if (referenceImages && referenceImages.length) {
+    const parts: any[] = [
+      {
+        text:
+          `${finalPrompt} Keep the SAME character(s) shown in the reference image(s): same face, colors, clothing and style. Vertical 9:16 framing.`,
+      },
+    ];
+    for (const ref of referenceImages) {
+      const { base64, mimeType } = stripDataUrl(ref);
+      parts.push({ inlineData: { data: base64, mimeType } });
+    }
+
+    const response = await ai.models.generateContent({
+      model: IMAGE_EDIT_MODEL,
+      contents: [{ role: 'user', parts }],
+    });
+
+    const respParts = response.candidates?.[0]?.content?.parts || [];
+    for (const part of respParts) {
+      if (part?.inlineData?.data) {
+        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+      }
+    }
+    // Si no devolvió imagen, caemos a Imagen sin referencia.
+  }
+
+  // --- Sin referencia: Imagen 9:16 ---
   const response = await ai.models.generateImages({
     model: IMAGE_MODEL,
     prompt: finalPrompt,
@@ -223,6 +269,19 @@ export async function generateSceneImageAI(prompt: string): Promise<string> {
     throw new Error('Gemini no devolvió ninguna imagen.');
   }
   return `data:image/png;base64,${generated}`;
+}
+
+/**
+ * Genera una "hoja de referencia" del/los personaje(s): un retrato claro en
+ * pose neutra que luego se reutiliza como referencia en cada escena para
+ * mantener la consistencia visual.
+ */
+export async function generateCharacterReferenceAI(
+  description: string,
+  artStyle: string
+): Promise<string> {
+  const prompt = `Character reference sheet, full body, neutral pose, plain background. ${description}. Art style: ${artStyle}. Children's book illustration, clear details, no text.`;
+  return generateSceneImageAI(prompt);
 }
 
 // ------------------------------------------------------------

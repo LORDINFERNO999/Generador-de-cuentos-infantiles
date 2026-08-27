@@ -3,12 +3,15 @@
 // Flujo: Crear -> (generar guion + imágenes) -> Ver -> Preparar/Publicar.
 // ============================================================
 
-import { AlertTriangle, BookOpenText, CalendarDays, Film, Link as LinkIcon, Mic, Share2 } from 'lucide-react';
+import { AlertTriangle, BookOpenText, CalendarDays, Film, Link as LinkIcon, Mic, Pencil, Save, Share2, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { CharacterGallery } from './components/CharacterGallery';
 import { FinalPanel } from './components/FinalPanel';
 import { MusicPicker } from './components/MusicPicker';
+import { SceneEditor } from './components/SceneEditor';
 import { StoryForm } from './components/StoryForm';
 import { StoryViewer } from './components/StoryViewer';
+import { VoiceSelector } from './components/VoiceSelector';
 import { CalendarView } from './components/social/CalendarView';
 import { MyNetworks } from './components/social/MyNetworks';
 import { PublishDialog } from './components/social/PublishDialog';
@@ -16,6 +19,7 @@ import { SocialPrepare } from './components/social/SocialPrepare';
 import { Button, Card, Spinner } from './components/ui';
 import {
   checkGeminiStatus,
+  generateCharacterReference,
   generateSceneImage,
   generateStory,
   getSocialStatus,
@@ -26,7 +30,7 @@ import {
   type NarrationMap,
 } from './services/audio';
 import { loadVoices } from './services/speech';
-import { saveStory } from './services/storage';
+import { saveCharacter, saveStory } from './services/storage';
 import {
   downloadFile,
   exportStoryVideo,
@@ -34,6 +38,8 @@ import {
 } from './services/videoExport';
 import type {
   AccountConnection,
+  Character,
+  SavedCharacter,
   SocialPackage,
   SocialPlatform,
   Story,
@@ -41,7 +47,7 @@ import type {
 } from './types';
 
 type Stage = 'create' | 'result';
-type Tab = 'video' | 'social' | 'networks' | 'calendar';
+type Tab = 'video' | 'editar' | 'social' | 'networks' | 'calendar';
 
 interface ExportedVideo {
   url: string;
@@ -66,6 +72,10 @@ export default function App() {
   const [narrating, setNarrating] = useState(false);
   const [narrationStatus, setNarrationStatus] = useState('');
   const [musicUrl, setMusicUrl] = useState('');
+
+  const [reusedCharacters, setReusedCharacters] = useState<SavedCharacter[]>([]);
+  const [galleryKey, setGalleryKey] = useState(0);
+  const [refBusy, setRefBusy] = useState<string | null>(null);
 
   const [socialPackage, setSocialPackage] = useState<SocialPackage | null>(null);
   const [accounts, setAccounts] = useState<AccountConnection[]>([]);
@@ -127,6 +137,63 @@ export default function App() {
 
   const handleRegenerate = () => {
     if (lastRequest.current) handleGenerate(lastRequest.current);
+  };
+
+  // ---- Edición del cuento (escenas y personajes) ----
+  const updateStory = (next: Story) => {
+    setStory(next);
+    saveStory(next);
+  };
+
+  const setCharacterVoice = (charId: string, voiceName: string) => {
+    if (!story) return;
+    const characters = story.characters.map((c) =>
+      c.id === charId ? { ...c, voiceName } : c
+    );
+    // Cambió la voz: la narración previa queda obsoleta.
+    setNarration(null);
+    updateStory({ ...story, characters });
+  };
+
+  const makeReference = async (character: Character) => {
+    if (!story) return;
+    setRefBusy(character.id);
+    setError(null);
+    try {
+      const referenceImage = await generateCharacterReference(character.description, story.artStyle);
+      const characters = story.characters.map((c) =>
+        c.id === character.id ? { ...c, referenceImage } : c
+      );
+      updateStory({ ...story, characters });
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo generar la referencia del personaje.');
+    } finally {
+      setRefBusy(null);
+    }
+  };
+
+  const saveCharToGallery = (character: Character) => {
+    const saved: SavedCharacter = {
+      id: `saved_${Date.now()}_${character.id}`,
+      name: character.name,
+      description: character.description,
+      voiceName: character.voiceName,
+      voiceTone: character.voiceTone,
+      referenceImage: character.referenceImage,
+      createdAt: Date.now(),
+    };
+    saveCharacter(saved);
+    setGalleryKey((k) => k + 1);
+  };
+
+  const reuseCharacter = (character: SavedCharacter) => {
+    setReusedCharacters((prev) =>
+      prev.some((c) => c.id === character.id) ? prev : [...prev, character]
+    );
+  };
+
+  const removeReused = (id: string) => {
+    setReusedCharacters((prev) => prev.filter((c) => c.id !== id));
   };
 
   // ---- Narración por voz IA ----
@@ -243,17 +310,19 @@ export default function App() {
               onGenerate={handleGenerate}
               loading={generating}
               disabled={geminiAvailable === false}
+              reusedCharacters={reusedCharacters}
+              onRemoveReused={removeReused}
             />
-            <div className="hidden lg:block">
-              <Card className="flex h-full flex-col items-center justify-center gap-4 bg-white/60 text-center">
-                <span className="text-6xl animate-float-slow">📖✨</span>
+            <div className="space-y-6">
+              <Card className="flex flex-col items-center gap-3 bg-white/60 text-center">
+                <span className="text-5xl animate-float-slow">📖✨</span>
                 <div>
                   <h2 className="font-['Fredoka',sans-serif] text-xl font-bold text-slate-800">
                     Cuentos mágicos en segundos
                   </h2>
                   <p className="mt-2 text-sm text-slate-500">
                     Escribe una idea y la IA creará un cuento animado con personajes consistentes,
-                    narración, subtítulos y una portada lista para Shorts y Reels.
+                    voces, subtítulos y una portada lista para Shorts y Reels.
                   </p>
                 </div>
                 <div className="flex flex-wrap justify-center gap-2 text-xs text-slate-400">
@@ -261,6 +330,13 @@ export default function App() {
                   <span>📘 Facebook Reels</span>
                   <span>📸 Instagram Reels</span>
                 </div>
+              </Card>
+
+              <Card>
+                <h3 className="mb-3 flex items-center gap-2 font-['Fredoka',sans-serif] text-lg font-bold text-slate-800">
+                  🎭 Mis personajes
+                </h3>
+                <CharacterGallery onReuse={reuseCharacter} refreshKey={galleryKey} compact />
               </Card>
             </div>
           </div>
@@ -273,6 +349,9 @@ export default function App() {
             <div className="flex flex-wrap gap-2">
               <TabButton active={tab === 'video'} onClick={() => setTab('video')} icon={<Film className="h-4 w-4" />}>
                 Video
+              </TabButton>
+              <TabButton active={tab === 'editar'} onClick={() => setTab('editar')} icon={<Pencil className="h-4 w-4" />}>
+                Editar
               </TabButton>
               <TabButton active={tab === 'social'} onClick={() => setTab('social')} icon={<Share2 className="h-4 w-4" />}>
                 Redes
@@ -392,6 +471,65 @@ export default function App() {
                     </div>
                   </Card>
                 </div>
+              </div>
+            )}
+
+            {tab === 'editar' && (
+              <div className="grid gap-6 lg:grid-cols-2">
+                <SceneEditor story={story} onChange={updateStory} />
+
+                <Card>
+                  <h3 className="mb-1 flex items-center gap-2 font-['Fredoka',sans-serif] text-lg font-bold text-slate-800">
+                    🎭 Personajes y voces
+                  </h3>
+                  <p className="mb-4 text-sm text-slate-500">
+                    Asigna una voz, genera una imagen de referencia para mantener el personaje
+                    consistente entre escenas, y guárdalo para reutilizarlo.
+                  </p>
+
+                  <div className="space-y-4">
+                    {story.characters.map((c) => (
+                      <div key={c.id} className="rounded-2xl border border-slate-200 p-3">
+                        <div className="flex gap-3">
+                          <div className="aspect-vertical w-16 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                            {c.referenceImage ? (
+                              <img src={c.referenceImage} alt={c.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-2xl">🎭</div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <p className="truncate text-sm font-semibold text-slate-700">{c.name}</p>
+                            <p className="line-clamp-2 text-xs text-slate-400">{c.description}</p>
+                            <VoiceSelector
+                              character={c}
+                              onChange={(voiceName) => setCharacterVoice(c.id, voiceName)}
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                variant="secondary"
+                                onClick={() => makeReference(c)}
+                                loading={refBusy === c.id}
+                                disabled={geminiAvailable === false || refBusy === c.id}
+                                className="!px-3 !py-1.5 text-xs"
+                              >
+                                <Sparkles className="h-4 w-4" />
+                                {c.referenceImage ? 'Regenerar referencia' : 'Generar referencia'}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                onClick={() => saveCharToGallery(c)}
+                                className="!px-3 !py-1.5 text-xs"
+                              >
+                                <Save className="h-4 w-4" /> Guardar
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
               </div>
             )}
 
