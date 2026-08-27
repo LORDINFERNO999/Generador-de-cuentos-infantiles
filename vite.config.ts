@@ -191,33 +191,33 @@ function apiServerPlugin(): Plugin {
           // ----- Autenticación (genérica) -----
           if (url === '/api/auth/register' && req.method === 'POST') {
             const body = await parseBody();
-            return send(200, authRegister(body.email || '', body.password || '', body.name || ''));
+            return send(200, await authRegister(body.email || '', body.password || '', body.name || ''));
           }
           if (url === '/api/auth/login' && req.method === 'POST') {
             const body = await parseBody();
-            return send(200, authLogin(body.email || '', body.password || ''));
+            return send(200, await authLogin(body.email || '', body.password || ''));
           }
           if (url === '/api/auth/logout' && req.method === 'POST') {
             const token = tokenFromHeader(req.headers.authorization);
-            if (token) authLogout(token);
+            if (token) await authLogout(token);
             return send(200, { success: true });
           }
           if (url === '/api/auth/me' && req.method === 'GET') {
-            const user = getUserByToken(tokenFromHeader(req.headers.authorization));
+            const user = await getUserByToken(tokenFromHeader(req.headers.authorization));
             return send(200, { user });
           }
 
           // ----- Datos sincronizados por usuario -----
           if (url === '/api/data' && req.method === 'GET') {
-            const user = getUserByToken(tokenFromHeader(req.headers.authorization));
+            const user = await getUserByToken(tokenFromHeader(req.headers.authorization));
             if (!user) return send(401, { error: 'No autenticado' });
-            return send(200, { data: getUserData(user.id) });
+            return send(200, { data: await getUserData(user.id) });
           }
           if (url === '/api/data' && req.method === 'PUT') {
-            const user = getUserByToken(tokenFromHeader(req.headers.authorization));
+            const user = await getUserByToken(tokenFromHeader(req.headers.authorization));
             if (!user) return send(401, { error: 'No autenticado' });
             const body = await parseBody();
-            setUserData(user.id, body.data);
+            await setUserData(user.id, body.data);
             return send(200, { success: true });
           }
 

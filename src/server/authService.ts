@@ -1,19 +1,16 @@
 // ============================================================
-// Servicio de autenticación GENÉRICO (lado servidor).
+// Servicio de autenticación.
 //
-// Implementación en memoria e intencionadamente sencilla y desacoplada,
-// para poder sustituirla más adelante por un proveedor real (Firebase,
-// Supabase, Auth0, una base de datos, etc.) sin tocar el frontend:
-// basta con reimplementar estas funciones.
+// Usa MySQL si está configurado (DB_HOST, DB_USER, DB_NAME); si no, cae a un
+// almacén EN MEMORIA (útil para desarrollo o demos sin base de datos).
+// La interfaz pública es asíncrona en ambos casos.
 //
-// Seguridad: las contraseñas se guardan como hash (scrypt + salt), NUNCA en
-// claro. El token de sesión es opaco y aleatorio.
-//
-// NOTA: al ser en memoria, los datos se pierden al reiniciar el servidor.
-// Es un andamiaje funcional para desarrollo; cámbialo por persistencia real.
+// Seguridad: contraseñas con hash scrypt + salt (nunca en claro); token de
+// sesión opaco y aleatorio.
 // ============================================================
 
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
+import { ensureSchema, getPool, isDbConfigured } from './db';
 
 export interface User {
   id: string;
@@ -26,9 +23,10 @@ interface StoredUser extends User {
   hash: string;
 }
 
-const users = new Map<string, StoredUser>(); // email -> usuario
-const sessions = new Map<string, string>(); // token -> userId
-const cloudData = new Map<string, unknown>(); // userId -> datos sincronizados
+// --- Almacén en memoria (fallback) ---
+const memUsers = new Map<string, StoredUser>(); // email -> usuario
+const memSessions = new Map<string, string>(); // token -> userId
+const memData = new Map<string, unknown>(); // userId -> datos
 
 function hashPassword(password: string, salt: string): string {
   return scryptSync(password, salt, 64).toString('hex');
@@ -44,66 +42,130 @@ function publicUser(u: StoredUser): User {
   return { id: u.id, email: u.email, name: u.name };
 }
 
-/** Registra un nuevo usuario y devuelve la sesión. */
-export function register(
+function newId(prefix: string): string {
+  return `${prefix}_${randomBytes(8).toString('hex')}`;
+}
+
+interface AuthResult {
+  success: boolean;
+  message?: string;
+  token?: string;
+  user?: User;
+}
+
+// ------------------------------------------------------------
+// Registro
+// ------------------------------------------------------------
+
+export async function register(
   email: string,
   password: string,
   name: string
-): { success: boolean; message?: string; token?: string; user?: User } {
+): Promise<AuthResult> {
   const key = email.trim().toLowerCase();
-  if (!key || !password) {
-    return { success: false, message: 'Email y contraseña son obligatorios.' };
-  }
-  if (password.length < 6) {
+  if (!key || !password) return { success: false, message: 'Email y contraseña son obligatorios.' };
+  if (password.length < 6)
     return { success: false, message: 'La contraseña debe tener al menos 6 caracteres.' };
-  }
-  if (users.has(key)) {
-    return { success: false, message: 'Ya existe una cuenta con ese email.' };
-  }
+
   const salt = randomBytes(16).toString('hex');
   const user: StoredUser = {
-    id: `u_${randomBytes(8).toString('hex')}`,
+    id: newId('u'),
     email: key,
     name: name.trim() || key.split('@')[0],
     salt,
     hash: hashPassword(password, salt),
   };
-  users.set(key, user);
-  const token = createSession(user.id);
+
+  if (isDbConfigured()) {
+    await ensureSchema();
+    const pool = getPool()!;
+    const [rows] = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [key]);
+    if ((rows as any[]).length) return { success: false, message: 'Ya existe una cuenta con ese email.' };
+    await pool.query(
+      'INSERT INTO users (id, email, name, salt, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [user.id, user.email, user.name, user.salt, user.hash, Date.now()]
+    );
+  } else {
+    if (memUsers.has(key)) return { success: false, message: 'Ya existe una cuenta con ese email.' };
+    memUsers.set(key, user);
+  }
+
+  const token = await createSession(user.id);
   return { success: true, token, user: publicUser(user) };
 }
 
-/** Inicia sesión con email y contraseña. */
-export function login(
-  email: string,
-  password: string
-): { success: boolean; message?: string; token?: string; user?: User } {
+// ------------------------------------------------------------
+// Login
+// ------------------------------------------------------------
+
+export async function login(email: string, password: string): Promise<AuthResult> {
   const key = email.trim().toLowerCase();
-  const user = users.get(key);
-  if (!user || !verifyPassword(password, user.salt, user.hash)) {
+  let stored: StoredUser | undefined;
+
+  if (isDbConfigured()) {
+    await ensureSchema();
+    const pool = getPool()!;
+    const [rows] = await pool.query('SELECT * FROM users WHERE email = ? LIMIT 1', [key]);
+    const row = (rows as any[])[0];
+    if (row) {
+      stored = { id: row.id, email: row.email, name: row.name, salt: row.salt, hash: row.hash };
+    }
+  } else {
+    stored = memUsers.get(key);
+  }
+
+  if (!stored || !verifyPassword(password, stored.salt, stored.hash)) {
     return { success: false, message: 'Email o contraseña incorrectos.' };
   }
-  const token = createSession(user.id);
-  return { success: true, token, user: publicUser(user) };
+  const token = await createSession(stored.id);
+  return { success: true, token, user: publicUser(stored) };
 }
 
-function createSession(userId: string): string {
+// ------------------------------------------------------------
+// Sesiones
+// ------------------------------------------------------------
+
+async function createSession(userId: string): Promise<string> {
   const token = randomBytes(24).toString('hex');
-  sessions.set(token, userId);
+  if (isDbConfigured()) {
+    const pool = getPool()!;
+    await pool.query('INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)', [
+      token,
+      userId,
+      Date.now(),
+    ]);
+  } else {
+    memSessions.set(token, userId);
+  }
   return token;
 }
 
-/** Cierra la sesión asociada a un token. */
-export function logout(token: string): void {
-  sessions.delete(token);
+export async function logout(token: string): Promise<void> {
+  if (isDbConfigured()) {
+    await getPool()!.query('DELETE FROM sessions WHERE token = ?', [token]);
+  } else {
+    memSessions.delete(token);
+  }
 }
 
-/** Devuelve el usuario asociado a un token de sesión, o null. */
-export function getUserByToken(token?: string): User | null {
+export async function getUserByToken(token?: string): Promise<User | null> {
   if (!token) return null;
-  const userId = sessions.get(token);
+
+  if (isDbConfigured()) {
+    await ensureSchema();
+    const pool = getPool()!;
+    const [rows] = await pool.query(
+      `SELECT u.id, u.email, u.name FROM sessions s
+       JOIN users u ON u.id = s.user_id WHERE s.token = ? LIMIT 1`,
+      [token]
+    );
+    const row = (rows as any[])[0];
+    return row ? { id: row.id, email: row.email, name: row.name } : null;
+  }
+
+  const userId = memSessions.get(token);
   if (!userId) return null;
-  for (const u of users.values()) {
+  for (const u of memUsers.values()) {
     if (u.id === userId) return publicUser(u);
   }
   return null;
@@ -116,12 +178,34 @@ export function tokenFromHeader(authHeader?: string): string | undefined {
   return match ? match[1] : undefined;
 }
 
-// -------- Datos sincronizados por usuario (nube genérica) --------
+// ------------------------------------------------------------
+// Datos sincronizados por usuario
+// ------------------------------------------------------------
 
-export function getUserData(userId: string): unknown {
-  return cloudData.get(userId) ?? null;
+export async function getUserData(userId: string): Promise<unknown> {
+  if (isDbConfigured()) {
+    const pool = getPool()!;
+    const [rows] = await pool.query('SELECT data FROM user_data WHERE user_id = ? LIMIT 1', [userId]);
+    const row = (rows as any[])[0];
+    if (!row?.data) return null;
+    try {
+      return JSON.parse(row.data);
+    } catch {
+      return null;
+    }
+  }
+  return memData.get(userId) ?? null;
 }
 
-export function setUserData(userId: string, data: unknown): void {
-  cloudData.set(userId, data);
+export async function setUserData(userId: string, data: unknown): Promise<void> {
+  if (isDbConfigured()) {
+    const pool = getPool()!;
+    await pool.query(
+      `INSERT INTO user_data (user_id, data, updated_at) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = VALUES(updated_at)`,
+      [userId, JSON.stringify(data ?? null), Date.now()]
+    );
+  } else {
+    memData.set(userId, data);
+  }
 }
