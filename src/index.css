@@ -1,0 +1,64 @@
+@import 'tailwindcss';
+
+:root {
+  --safe-top: 14%;
+  --safe-bottom: 20%;
+  --safe-side: 6%;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+/* Ocultar barras de desplazamiento pero permitir scroll */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Lienzo vertical 9:16 */
+.aspect-vertical {
+  aspect-ratio: 9 / 16;
+}
+
+/* Zona segura para Reels/Shorts: contenido dentro de márgenes que no tapan
+   los controles de las plataformas. */
+.safe-zone {
+  position: absolute;
+  top: var(--safe-top);
+  bottom: var(--safe-bottom);
+  left: var(--safe-side);
+  right: var(--safe-side);
+}
+
+/* Subtítulos grandes con contorno para legibilidad sobre cualquier imagen. */
+.subtitle-outline {
+  text-shadow:
+    -2px -2px 0 rgba(0, 0, 0, 0.55),
+    2px -2px 0 rgba(0, 0, 0, 0.55),
+    -2px 2px 0 rgba(0, 0, 0, 0.55),
+    2px 2px 0 rgba(0, 0, 0, 0.55),
+    0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.animate-float-slow {
+  animation: float-slow 4s ease-in-out infinite;
+}
