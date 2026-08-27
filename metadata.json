@@ -1,0 +1,6 @@
+{
+  "name": "Generador de Cuentos Infantiles Virales",
+  "description": "Generador de cuentos infantiles virales en video vertical 9:16 para YouTube Shorts, Facebook Reels e Instagram Reels con personajes consistentes, guiones con gancho, voces por personaje, música, efectos y exportación MP4.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
