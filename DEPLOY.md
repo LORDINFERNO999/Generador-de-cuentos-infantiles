@@ -116,11 +116,12 @@ Para actualizar: `git pull && npm install && npm run build && pm2 restart cuento
 
 - **HTTPS es obligatorio** en producción: el OAuth, el micrófono (voces) y el
   Web Share API no funcionan sobre HTTP.
-- El **login y la sincronización** usan un almacén **en memoria** (genérico, de
-  desarrollo): los usuarios se pierden al reiniciar y no funciona con varias
-  instancias. Antes de producción real, sustituye `src/server/authService.ts`
-  por una base de datos (Hostinger ofrece MySQL) o un proveedor (Firebase,
-  Supabase, Auth0).
+- El **login y la sincronización** usan **MySQL** cuando configuras las
+  variables `DB_*` (persistente y multi‑instancia). Si las dejas vacías, caen a
+  un almacén **en memoria** solo para desarrollo (se pierde al reiniciar).
+  - En Hostinger, crea una base de datos MySQL desde el panel y copia host,
+    usuario, contraseña y nombre en `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`.
+  - Las tablas (`users`, `sessions`, `user_data`) se crean solas al arrancar.
 - La **exportación de video** ocurre en el navegador del usuario (no carga el
   servidor). Las llamadas a Gemini (texto, imagen, voz) sí pasan por el backend.
 - Sube `client_max_body_size` en Nginx (ya incluido: 30M) porque las imágenes y

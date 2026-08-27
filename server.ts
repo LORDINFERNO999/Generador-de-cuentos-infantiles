@@ -30,6 +30,7 @@ import {
   setUserData,
   tokenFromHeader,
 } from './src/server/authService.js';
+import { ensureSchema, isDbConfigured } from './src/server/db.js';
 
 function oauthCloseHtml(success: boolean, message: string): string {
   const safe = message.replace(/</g, '&lt;');
@@ -195,37 +196,45 @@ app.post('/api/social/publish', async (req, res) => {
 
 // ---------------- Autenticación (genérica) ----------------
 
-app.post('/api/auth/register', (req, res) => {
-  res.json(authRegister(req.body.email || '', req.body.password || '', req.body.name || ''));
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    res.json(await authRegister(req.body.email || '', req.body.password || '', req.body.name || ''));
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e?.message || 'Error en el registro' });
+  }
 });
 
-app.post('/api/auth/login', (req, res) => {
-  res.json(authLogin(req.body.email || '', req.body.password || ''));
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    res.json(await authLogin(req.body.email || '', req.body.password || ''));
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e?.message || 'Error al iniciar sesión' });
+  }
 });
 
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', async (req, res) => {
   const token = tokenFromHeader(req.headers.authorization);
-  if (token) authLogout(token);
+  if (token) await authLogout(token);
   res.json({ success: true });
 });
 
-app.get('/api/auth/me', (req, res) => {
-  const user = getUserByToken(tokenFromHeader(req.headers.authorization));
+app.get('/api/auth/me', async (req, res) => {
+  const user = await getUserByToken(tokenFromHeader(req.headers.authorization));
   res.json({ user });
 });
 
 // ---------------- Datos sincronizados por usuario ----------------
 
-app.get('/api/data', (req, res) => {
-  const user = getUserByToken(tokenFromHeader(req.headers.authorization));
+app.get('/api/data', async (req, res) => {
+  const user = await getUserByToken(tokenFromHeader(req.headers.authorization));
   if (!user) return res.status(401).json({ error: 'No autenticado' });
-  res.json({ data: getUserData(user.id) });
+  res.json({ data: await getUserData(user.id) });
 });
 
-app.put('/api/data', (req, res) => {
-  const user = getUserByToken(tokenFromHeader(req.headers.authorization));
+app.put('/api/data', async (req, res) => {
+  const user = await getUserByToken(tokenFromHeader(req.headers.authorization));
   if (!user) return res.status(401).json({ error: 'No autenticado' });
-  setUserData(user.id, req.body.data);
+  await setUserData(user.id, req.body.data);
   res.json({ success: true });
 });
 
@@ -237,6 +246,21 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+async function startup() {
+  if (isDbConfigured()) {
+    try {
+      await ensureSchema();
+      console.log('Base de datos MySQL conectada y esquema listo.');
+    } catch (e) {
+      console.error('No se pudo inicializar MySQL; se usará almacén en memoria.', e);
+    }
+  } else {
+    console.log('MySQL no configurado: autenticación en memoria (solo desarrollo).');
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server listening on port ${PORT}`);
+  });
+}
+
+startup();
