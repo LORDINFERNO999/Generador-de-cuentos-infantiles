@@ -1,0 +1,72 @@
+// ============================================================
+// Almacenamiento local (localStorage): calendario de publicaciones
+// y cuentos guardados. NUNCA se guardan tokens ni contraseñas aquí.
+// ============================================================
+
+import type { CalendarEntry, Story } from '../types';
+
+const CALENDAR_KEY = 'cuentos_calendar_v1';
+const STORIES_KEY = 'cuentos_stories_v1';
+
+function read<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function write<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Silencioso: puede fallar por cuota o modo privado.
+  }
+}
+
+// -------- Calendario --------
+
+export function getCalendarEntries(): CalendarEntry[] {
+  return read<CalendarEntry[]>(CALENDAR_KEY, []).sort((a, b) =>
+    `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)
+  );
+}
+
+export function saveCalendarEntry(entry: CalendarEntry): void {
+  const entries = read<CalendarEntry[]>(CALENDAR_KEY, []);
+  const idx = entries.findIndex((e) => e.id === entry.id);
+  if (idx >= 0) {
+    entries[idx] = entry;
+  } else {
+    entries.push(entry);
+  }
+  write(CALENDAR_KEY, entries);
+}
+
+export function deleteCalendarEntry(id: string): void {
+  const entries = read<CalendarEntry[]>(CALENDAR_KEY, []).filter((e) => e.id !== id);
+  write(CALENDAR_KEY, entries);
+}
+
+// -------- Cuentos --------
+
+export function getSavedStories(): Story[] {
+  return read<Story[]>(STORIES_KEY, []).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function saveStory(story: Story): void {
+  const stories = read<Story[]>(STORIES_KEY, []);
+  const idx = stories.findIndex((s) => s.id === story.id);
+  if (idx >= 0) {
+    stories[idx] = story;
+  } else {
+    stories.push(story);
+  }
+  write(STORIES_KEY, stories);
+}
+
+export function deleteStory(id: string): void {
+  const stories = read<Story[]>(STORIES_KEY, []).filter((s) => s.id !== id);
+  write(STORIES_KEY, stories);
+}

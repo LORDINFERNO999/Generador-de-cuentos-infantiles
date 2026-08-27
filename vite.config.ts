@@ -2,7 +2,18 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
-import { generateKidsStoryAI, generateSceneImageAI } from './src/server/geminiService';
+import {
+  generateKidsStoryAI,
+  generateSceneImageAI,
+  generateSocialMetaAI,
+} from './src/server/geminiService';
+import {
+  disconnect,
+  getOAuthUrl,
+  getSocialStatus,
+  publishDirect,
+  type Platform,
+} from './src/server/socialService';
 
 function apiServerPlugin(): Plugin {
   return {
@@ -12,6 +23,9 @@ function apiServerPlugin(): Plugin {
         if (!req.url?.startsWith('/api/')) {
           return next();
         }
+
+        const url = req.url.split('?')[0];
+        const query = new URLSearchParams(req.url.split('?')[1] || '');
 
         const parseBody = () =>
           new Promise<any>((resolve) => {
@@ -28,38 +42,78 @@ function apiServerPlugin(): Plugin {
             });
           });
 
+        const send = (status: number, payload: unknown) => {
+          res.statusCode = status;
+          res.end(JSON.stringify(payload));
+        };
+
         res.setHeader('Content-Type', 'application/json');
 
         try {
-          if (req.url === '/api/gemini/status' && req.method === 'GET') {
-            const hasKey = Boolean(process.env.GEMINI_API_KEY);
-            res.end(JSON.stringify({ available: hasKey }));
-            return;
+          // ----- Gemini -----
+          if (url === '/api/gemini/status' && req.method === 'GET') {
+            return send(200, { available: Boolean(process.env.GEMINI_API_KEY) });
           }
 
-          if (req.url === '/api/gemini/generate-story' && req.method === 'POST') {
+          if (url === '/api/gemini/generate-story' && req.method === 'POST') {
             const body = await parseBody();
             const result = await generateKidsStoryAI(body);
-            res.end(JSON.stringify({ success: true, data: result }));
-            return;
+            return send(200, { success: true, data: result });
           }
 
-          if (req.url === '/api/gemini/generate-image' && req.method === 'POST') {
+          if (url === '/api/gemini/generate-image' && req.method === 'POST') {
             const body = await parseBody();
             const imageUrl = await generateSceneImageAI(body.prompt || '');
-            res.end(JSON.stringify({ success: true, imageUrl }));
-            return;
+            return send(200, { success: true, imageUrl });
           }
 
-          res.statusCode = 404;
-          res.end(JSON.stringify({ error: 'Endpoint no encontrado' }));
+          if (url === '/api/gemini/generate-meta' && req.method === 'POST') {
+            const body = await parseBody();
+            const platforms = await generateSocialMetaAI(body);
+            return send(200, { success: true, platforms });
+          }
+
+          // ----- Redes sociales -----
+          if (url === '/api/social/status' && req.method === 'GET') {
+            return send(200, { success: true, platforms: getSocialStatus() });
+          }
+
+          if (url.startsWith('/api/social/connect/') && req.method === 'GET') {
+            const platform = url.split('/').pop() as Platform;
+            const appUrl = query.get('appUrl') || process.env.APP_URL || '';
+            const authUrl = getOAuthUrl(platform, appUrl);
+            if (!authUrl) {
+              return send(200, {
+                success: false,
+                available: false,
+                message:
+                  'La conexión con esta plataforma no está configurada. Configura las credenciales OAuth oficiales en el servidor.',
+              });
+            }
+            return send(200, { success: true, available: true, authUrl });
+          }
+
+          if (url.startsWith('/api/social/disconnect/') && req.method === 'POST') {
+            const platform = url.split('/').pop() as Platform;
+            disconnect(platform);
+            return send(200, { success: true });
+          }
+
+          if (url === '/api/social/publish' && req.method === 'POST') {
+            const body = await parseBody();
+            const result = await publishDirect({
+              platform: body.platform,
+              title: body.title || '',
+              description: body.description || '',
+            });
+            return send(200, result);
+          }
+
+          return send(404, { error: 'Endpoint no encontrado' });
         } catch (error: any) {
-          res.statusCode = 500;
-          res.end(
-            JSON.stringify({
-              error: error?.message || 'Error interno en el servidor de Gemini',
-            })
-          );
+          return send(500, {
+            error: error?.message || 'Error interno en el servidor de la API',
+          });
         }
       });
     },
