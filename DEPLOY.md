@@ -125,3 +125,24 @@ Para actualizar: `git pull && npm install && npm run build && pm2 restart cuento
   servidor). Las llamadas a Gemini (texto, imagen, voz) sí pasan por el backend.
 - Sube `client_max_body_size` en Nginx (ya incluido: 30M) porque las imágenes y
   videos viajan en base64.
+
+
+---
+
+## 🐳 Opción C — Docker (VPS o cualquier contenedor)
+
+El repo incluye un `Dockerfile` de producción (build en dos etapas).
+
+```bash
+# Construir la imagen
+docker build -t cuentos .
+
+# Ejecutar (pasa tus variables de entorno)
+docker run -d --name cuentos -p 3000:3000 \
+  -e GEMINI_API_KEY="tu_clave" \
+  -e APP_URL="https://tu-dominio.com" \
+  -e GOOGLE_CLIENT_ID="..." -e GOOGLE_CLIENT_SECRET="..." \
+  cuentos
+```
+
+Detrás sigue conviniendo un Nginx con HTTPS (ver Opción A) apuntando a `:3000`.
