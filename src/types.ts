@@ -31,6 +31,26 @@ export interface Character {
   referenceImage?: string;
 }
 
+/** Plantilla de marca aplicada a los videos (intro/outro/logo). */
+export interface Branding {
+  /** Nombre del canal/marca. */
+  brandName: string;
+  /** Logo en dataURL (opcional). */
+  logo?: string;
+  /** Texto de la escena de introducción (opcional). */
+  introText?: string;
+  /** Texto de la escena de cierre (p.ej. "¡Suscríbete!"). */
+  outroText?: string;
+  /** Color de acento en hex. */
+  accentColor: string;
+  /** Mostrar marca de agua (logo/nombre) durante el video. */
+  showWatermark: boolean;
+  /** Incluir escena de intro al inicio. */
+  showIntro: boolean;
+  /** Incluir escena de outro al final. */
+  showOutro: boolean;
+}
+
 /** Personaje guardado en la galería para reutilizar en otros cuentos. */
 export interface SavedCharacter {
   id: string;

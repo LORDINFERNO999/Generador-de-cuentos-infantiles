@@ -8,7 +8,7 @@
 // reproduce en la vista previa dentro de la app.
 // ============================================================
 
-import type { Scene, Story } from '../types';
+import type { Branding, Scene, Story } from '../types';
 import { decodeNarration, type NarrationMap } from './audio';
 
 export const VIDEO_WIDTH = 1080;
@@ -191,6 +191,8 @@ export async function exportStoryVideo(
     musicUrl?: string;
     /** Narración TTS por escena (se incrusta en el audio del video). */
     narration?: NarrationMap | null;
+    /** Plantilla de marca (intro/outro/marca de agua). */
+    branding?: Branding | null;
     fps?: number;
     onProgress?: (p: ExportProgress) => void;
     signal?: AbortSignal;
@@ -267,8 +269,17 @@ export async function exportStoryVideo(
     recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
   });
 
+  // Logo de marca (si existe).
+  const branding = options.branding || null;
+  const logoImg = branding?.logo ? await loadImage(branding.logo) : null;
+
   recorder.start();
   if (audioEl) await audioEl.play().catch(() => undefined);
+
+  // Intro de marca.
+  if (branding?.showIntro) {
+    await renderBrandFrame(ctx, 'intro', story, branding, logoImg, options.signal);
+  }
 
   // Renderizado escena por escena. La duración sigue a la narración si existe.
   for (let i = 0; i < scenes.length; i++) {
@@ -286,7 +297,12 @@ export async function exportStoryVideo(
       durationMs = buffer.duration * 1000 + 400; // pequeña cola tras la voz
     }
 
-    await renderScene(ctx, scenes[i], images[i], i, story, durationMs, options.signal);
+    await renderScene(ctx, scenes[i], images[i], i, story, durationMs, branding, logoImg, options.signal);
+  }
+
+  // Outro de marca.
+  if (branding?.showOutro) {
+    await renderBrandFrame(ctx, 'outro', story, branding, logoImg, options.signal);
   }
 
   options.onProgress?.({
@@ -314,6 +330,8 @@ function renderScene(
   index: number,
   story: Story,
   durationMs: number,
+  branding: Branding | null,
+  logoImg: HTMLImageElement | null,
   signal?: AbortSignal
 ): Promise<void> {
   return new Promise((resolve) => {
@@ -345,6 +363,111 @@ function renderScene(
       drawSubtitle(ctx, scene.subtitle, scene.speaker);
       ctx.globalAlpha = 1;
 
+      // Marca de agua (logo/nombre) durante el video.
+      if (branding?.showWatermark) {
+        drawWatermark(ctx, branding, logoImg);
+      }
+
+      if (t >= 1 || signal?.aborted) {
+        resolve();
+      } else {
+        requestAnimationFrame(frame);
+      }
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+/** Dibuja la marca de agua (logo + nombre) en la parte superior. */
+function drawWatermark(
+  ctx: CanvasRenderingContext2D,
+  branding: Branding,
+  logoImg: HTMLImageElement | null
+): void {
+  const margin = 40;
+  const y = VIDEO_HEIGHT * 0.055;
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  let x = margin;
+  if (logoImg) {
+    const size = 90;
+    ctx.drawImage(logoImg, x, y - size / 2, size, size);
+    x += size + 20;
+  }
+  if (branding.brandName) {
+    ctx.textAlign = 'left';
+    ctx.font = '700 40px "Quicksand", sans-serif';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.strokeText(branding.brandName, x, y + 14);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(branding.brandName, x, y + 14);
+  }
+  ctx.restore();
+}
+
+/** Renderiza un fotograma de intro u outro de marca (~2.5s). */
+function renderBrandFrame(
+  ctx: CanvasRenderingContext2D,
+  kind: 'intro' | 'outro',
+  story: Story,
+  branding: Branding,
+  logoImg: HTMLImageElement | null,
+  signal?: AbortSignal
+): Promise<void> {
+  return new Promise((resolve) => {
+    const durationMs = 2500;
+    const start = performance.now();
+    const accent = branding.accentColor || '#fb7185';
+
+    const frame = (now: number) => {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / durationMs);
+
+      // Fondo degradado con el color de acento.
+      const grad = ctx.createLinearGradient(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+      grad.addColorStop(0, accent);
+      grad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+
+      ctx.globalAlpha = Math.min(1, elapsed / 400);
+      ctx.textAlign = 'center';
+
+      // Logo centrado.
+      if (logoImg) {
+        const size = 320;
+        ctx.drawImage(logoImg, (VIDEO_WIDTH - size) / 2, VIDEO_HEIGHT * 0.28, size, size);
+      }
+
+      // Nombre de marca.
+      if (branding.brandName) {
+        ctx.font = '700 90px "Fredoka", "Quicksand", sans-serif';
+        ctx.lineWidth = 12;
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.strokeText(branding.brandName, VIDEO_WIDTH / 2, VIDEO_HEIGHT * 0.56);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(branding.brandName, VIDEO_WIDTH / 2, VIDEO_HEIGHT * 0.56);
+      }
+
+      // Texto de intro (título del cuento) u outro.
+      const text =
+        kind === 'intro'
+          ? branding.introText || story.title
+          : branding.outroText || '¡Gracias por ver!';
+      ctx.font = '600 56px "Quicksand", sans-serif';
+      const lines = wrapText(ctx, text, VIDEO_WIDTH * 0.8);
+      lines.forEach((line, i) => {
+        const y = VIDEO_HEIGHT * 0.66 + i * 70;
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.strokeText(line, VIDEO_WIDTH / 2, y);
+        ctx.fillStyle = '#fde68a';
+        ctx.fillText(line, VIDEO_WIDTH / 2, y);
+      });
+
+      ctx.globalAlpha = 1;
+
       if (t >= 1 || signal?.aborted) {
         resolve();
       } else {
@@ -356,7 +479,7 @@ function renderScene(
 }
 
 /** Genera una portada (thumbnail) 1080x1920 con la primera imagen + título. */
-export async function generateThumbnail(story: Story): Promise<string> {
+export async function generateThumbnail(story: Story, branding?: Branding | null): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = VIDEO_WIDTH;
   canvas.height = VIDEO_HEIGHT;
@@ -395,6 +518,12 @@ export async function generateThumbnail(story: Story): Promise<string> {
   ctx.lineWidth = 8;
   ctx.strokeText('✨ CUENTO INFANTIL', VIDEO_WIDTH / 2, VIDEO_HEIGHT * 0.16);
   ctx.fillText('✨ CUENTO INFANTIL', VIDEO_WIDTH / 2, VIDEO_HEIGHT * 0.16);
+
+  // Marca de agua en la portada.
+  if (branding?.showWatermark && (branding.brandName || branding.logo)) {
+    const logoImg = branding.logo ? await loadImage(branding.logo) : null;
+    drawWatermark(ctx, branding, logoImg);
+  }
 
   return canvas.toDataURL('image/png');
 }

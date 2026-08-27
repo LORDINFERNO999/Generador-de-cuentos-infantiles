@@ -3,14 +3,17 @@
 // Flujo: Crear -> (generar guion + imágenes) -> Ver -> Preparar/Publicar.
 // ============================================================
 
-import { AlertTriangle, BookOpenText, CalendarDays, Film, Link as LinkIcon, Mic, Pencil, Save, Share2, Sparkles } from 'lucide-react';
+import { AlertTriangle, BookOpenText, CalendarDays, FileText, Film, Link as LinkIcon, Mic, Pencil, Save, Share2, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { BrandingSettings } from './components/BrandingSettings';
 import { CharacterGallery } from './components/CharacterGallery';
 import { FinalPanel } from './components/FinalPanel';
 import { GrowthTools } from './components/GrowthTools';
 import { MusicPicker } from './components/MusicPicker';
+import { ReadingMode } from './components/ReadingMode';
 import { SceneEditor } from './components/SceneEditor';
 import { StoryForm } from './components/StoryForm';
+import { StoryLibrary } from './components/StoryLibrary';
 import { StoryViewer } from './components/StoryViewer';
 import { VoiceSelector } from './components/VoiceSelector';
 import { CalendarView } from './components/social/CalendarView';
@@ -30,8 +33,9 @@ import {
   makeVoiceForScene,
   type NarrationMap,
 } from './services/audio';
+import { openBookPrint } from './services/bookExport';
 import { loadVoices } from './services/speech';
-import { saveCharacter, saveStory } from './services/storage';
+import { getBranding, saveCharacter, saveStory } from './services/storage';
 import {
   downloadFile,
   exportStoryVideo,
@@ -39,6 +43,7 @@ import {
 } from './services/videoExport';
 import type {
   AccountConnection,
+  Branding,
   Character,
   SavedCharacter,
   SocialPackage,
@@ -77,6 +82,10 @@ export default function App() {
   const [reusedCharacters, setReusedCharacters] = useState<SavedCharacter[]>([]);
   const [galleryKey, setGalleryKey] = useState(0);
   const [refBusy, setRefBusy] = useState<string | null>(null);
+
+  const [branding, setBranding] = useState<Branding>(getBranding());
+  const [showReading, setShowReading] = useState(false);
+  const [libraryKey, setLibraryKey] = useState(0);
 
   const [socialPackage, setSocialPackage] = useState<SocialPackage | null>(null);
   const [accounts, setAccounts] = useState<AccountConnection[]>([]);
@@ -127,6 +136,7 @@ export default function App() {
       }
 
       saveStory(newStory);
+      setLibraryKey((k) => k + 1);
     } catch (e: any) {
       setError(e?.message || 'No se pudo generar el cuento.');
       setStage('create');
@@ -144,6 +154,17 @@ export default function App() {
   const updateStory = (next: Story) => {
     setStory(next);
     saveStory(next);
+    setLibraryKey((k) => k + 1);
+  };
+
+  // ---- Abrir un cuento desde la biblioteca ----
+  const openStory = (s: Story) => {
+    setStory(s);
+    setNarration(null);
+    setVideo(null);
+    setSocialPackage(null);
+    setStage('result');
+    setTab('video');
   };
 
   const setCharacterVoice = (charId: string, voiceName: string) => {
@@ -243,6 +264,7 @@ export default function App() {
       const result = await exportStoryVideo(story, {
         narration,
         musicUrl: musicUrl || undefined,
+        branding,
         onProgress: setExportProgress,
       });
       const exported = { url: result.url, mimeType: result.mimeType };
@@ -355,6 +377,13 @@ export default function App() {
                 </h3>
                 <CharacterGallery onReuse={reuseCharacter} refreshKey={galleryKey} compact />
               </Card>
+
+              <Card>
+                <h3 className="mb-3 flex items-center gap-2 font-['Fredoka',sans-serif] text-lg font-bold text-slate-800">
+                  📚 Mis cuentos
+                </h3>
+                <StoryLibrary onOpen={openStory} refreshKey={libraryKey} />
+              </Card>
             </div>
           </div>
         )}
@@ -436,7 +465,22 @@ export default function App() {
                     <div className="border-t border-slate-100 pt-4">
                       <MusicPicker onChange={setMusicUrl} />
                     </div>
+
+                    <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                      <Button variant="secondary" onClick={() => setShowReading(true)} className="!py-2 text-sm">
+                        <BookOpenText className="h-4 w-4" /> Modo lectura
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => openBookPrint(story, branding)}
+                        className="!py-2 text-sm"
+                      >
+                        <FileText className="h-4 w-4" /> Libro PDF
+                      </Button>
+                    </div>
                   </Card>
+
+                  <BrandingSettings onChange={setBranding} />
 
                   {exporting && exportProgress && (
                     <Card>
@@ -587,6 +631,11 @@ export default function App() {
           pkg={publishDialog.pkg}
           onClose={() => setPublishDialog(null)}
         />
+      )}
+
+      {/* Modo lectura acompañada */}
+      {showReading && story && (
+        <ReadingMode story={story} narration={narration} onClose={() => setShowReading(false)} />
       )}
 
       <footer className="mx-auto max-w-5xl px-4 py-8 text-center text-xs text-slate-400">

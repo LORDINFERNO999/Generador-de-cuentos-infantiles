@@ -3,11 +3,24 @@
 // y cuentos guardados. NUNCA se guardan tokens ni contraseñas aquí.
 // ============================================================
 
-import type { CalendarEntry, SavedCharacter, Story } from '../types';
+import type { Branding, CalendarEntry, SavedCharacter, Story } from '../types';
 
 const CALENDAR_KEY = 'cuentos_calendar_v1';
 const STORIES_KEY = 'cuentos_stories_v1';
 const CHARACTERS_KEY = 'cuentos_characters_v1';
+const BRANDING_KEY = 'cuentos_branding_v1';
+
+/** Valores por defecto de la marca. */
+export const DEFAULT_BRANDING: Branding = {
+  brandName: '',
+  logo: undefined,
+  introText: '',
+  outroText: '¡Suscríbete para más cuentos! 🔔',
+  accentColor: '#fb7185',
+  showWatermark: true,
+  showIntro: true,
+  showOutro: true,
+};
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -92,4 +105,14 @@ export function saveCharacter(character: SavedCharacter): void {
 export function deleteCharacter(id: string): void {
   const chars = read<SavedCharacter[]>(CHARACTERS_KEY, []).filter((c) => c.id !== id);
   write(CHARACTERS_KEY, chars);
+}
+
+// -------- Marca (branding) --------
+
+export function getBranding(): Branding {
+  return { ...DEFAULT_BRANDING, ...read<Partial<Branding>>(BRANDING_KEY, {}) };
+}
+
+export function saveBranding(branding: Branding): void {
+  write(BRANDING_KEY, branding);
 }
