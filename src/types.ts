@@ -75,6 +75,8 @@ export interface Story {
   scenes: Scene[];
   /** Modo Reel/Short activado (composición vertical optimizada). */
   reelMode: boolean;
+  /** Idioma del cuento (p.ej. "español", "english"). */
+  language: string;
   createdAt: number;
 }
 

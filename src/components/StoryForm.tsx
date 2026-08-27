@@ -2,8 +2,9 @@
 // Formulario de creación de cuentos + modo Reel/Short (spec 46).
 // ============================================================
 
-import { Sparkles, Wand2, X } from 'lucide-react';
+import { Lightbulb, Sparkles, Wand2, X } from 'lucide-react';
 import { useState } from 'react';
+import { getTrendIdeas, type TrendIdea } from '../services/api';
 import type { AgeRange, ArtStyle, SavedCharacter, StoryRequest } from '../types';
 import { Button, Card, SectionTitle } from './ui';
 
@@ -12,6 +13,15 @@ const AGE_OPTIONS: { value: AgeRange; label: string }[] = [
   { value: '4-6', label: '4–6 años' },
   { value: '6-8', label: '6–8 años' },
   { value: '8-10', label: '8–10 años' },
+];
+
+const LANG_OPTIONS: { value: string; label: string }[] = [
+  { value: 'español', label: '🇪🇸 Español' },
+  { value: 'english', label: '🇬🇧 English' },
+  { value: 'português', label: '🇧🇷 Português' },
+  { value: 'français', label: '🇫🇷 Français' },
+  { value: 'italiano', label: '🇮🇹 Italiano' },
+  { value: 'deutsch', label: '🇩🇪 Deutsch' },
 ];
 
 const STYLE_OPTIONS: { value: ArtStyle; label: string; emoji: string }[] = [
@@ -46,6 +56,28 @@ export function StoryForm({
   const [characterHints, setCharacterHints] = useState('');
   const [sceneCount, setSceneCount] = useState(6);
   const [reelMode, setReelMode] = useState(true);
+  const [language, setLanguage] = useState('español');
+
+  const [ideas, setIdeas] = useState<TrendIdea[]>([]);
+  const [loadingIdeas, setLoadingIdeas] = useState(false);
+  const [showIdeas, setShowIdeas] = useState(false);
+
+  const fetchIdeas = async () => {
+    setLoadingIdeas(true);
+    setShowIdeas(true);
+    try {
+      setIdeas(await getTrendIdeas(6, language));
+    } catch {
+      setIdeas([]);
+    } finally {
+      setLoadingIdeas(false);
+    }
+  };
+
+  const pickIdea = (idea: TrendIdea) => {
+    setTheme(idea.theme);
+    setShowIdeas(false);
+  };
 
   const canSubmit = theme.trim().length > 2 && !loading && !disabled;
 
@@ -65,7 +97,7 @@ export function StoryForm({
       characterHints: hints || undefined,
       sceneCount,
       reelMode,
-      language: 'español',
+      language,
     });
   };
 
@@ -80,9 +112,20 @@ export function StoryForm({
       <div className="space-y-5">
         {/* Tema */}
         <div>
-          <label className="mb-1 block text-sm font-semibold text-slate-700">
-            ¿De qué trata el cuento? *
-          </label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-sm font-semibold text-slate-700">
+              ¿De qué trata el cuento? *
+            </label>
+            <button
+              type="button"
+              onClick={fetchIdeas}
+              disabled={loadingIdeas || disabled}
+              className="flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700 transition hover:bg-amber-200 disabled:opacity-50"
+            >
+              <Lightbulb className="h-3.5 w-3.5" />
+              {loadingIdeas ? 'Buscando...' : 'Ideas virales'}
+            </button>
+          </div>
           <textarea
             value={theme}
             onChange={(e) => setTheme(e.target.value)}
@@ -90,6 +133,26 @@ export function StoryForm({
             rows={3}
             className="w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
           />
+
+          {showIdeas && (
+            <div className="mt-2 space-y-2 rounded-2xl bg-amber-50/70 p-3">
+              {loadingIdeas && <p className="text-xs text-amber-700">Generando ideas...</p>}
+              {!loadingIdeas && ideas.length === 0 && (
+                <p className="text-xs text-amber-700">No se pudieron obtener ideas ahora.</p>
+              )}
+              {ideas.map((idea, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => pickIdea(idea)}
+                  className="block w-full rounded-xl bg-white p-2.5 text-left text-sm shadow-sm transition hover:ring-2 hover:ring-amber-300"
+                >
+                  <span className="font-semibold text-slate-800">{idea.theme}</span>
+                  {idea.reason && <span className="mt-0.5 block text-xs text-slate-400">{idea.reason}</span>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Moraleja */}
@@ -133,6 +196,22 @@ export function StoryForm({
               ))}
             </div>
           )}
+        </div>
+
+        {/* Idioma */}
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-slate-700">Idioma</label>
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
+          >
+            {LANG_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Edad */}

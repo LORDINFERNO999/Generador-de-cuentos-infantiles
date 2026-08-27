@@ -62,6 +62,7 @@ export async function generateStory(req: StoryRequest): Promise<Story> {
     artStyle: req.artStyle,
     hook: raw.hook,
     reelMode: req.reelMode,
+    language: req.language || 'español',
     createdAt: now,
     characters: (raw.characters || []).map((c: any, i: number) => ({
       id: `char_${now}_${i}`,
@@ -137,6 +138,43 @@ export async function generateSocialMeta(input: {
     input
   );
   return data.platforms || [];
+}
+
+/** Sugerencias de temas con potencial viral. */
+export interface TrendIdea {
+  theme: string;
+  hook: string;
+  reason: string;
+}
+export async function getTrendIdeas(count = 5, language = 'español'): Promise<TrendIdea[]> {
+  const data = await postJson<{ success: boolean; ideas: TrendIdea[] }>('/api/gemini/trends', {
+    count,
+    language,
+  });
+  return data.ideas || [];
+}
+
+/** Análisis del gancho inicial. */
+export async function analyzeHook(
+  hook: string,
+  theme: string,
+  language = 'español'
+): Promise<{ score: number; feedback: string; improvedHook: string }> {
+  return postJson('/api/gemini/analyze-hook', { hook, theme, language });
+}
+
+/** Variantes A/B de título. */
+export async function getTitleVariants(
+  title: string,
+  theme: string,
+  count = 4,
+  language = 'español'
+): Promise<string[]> {
+  const data = await postJson<{ success: boolean; titles: string[] }>(
+    '/api/gemini/title-variants',
+    { title, theme, count, language }
+  );
+  return data.titles || [];
 }
 
 /** Estado de conexión de las cuentas de redes sociales. */

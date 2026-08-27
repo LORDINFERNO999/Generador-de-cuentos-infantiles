@@ -3,11 +3,14 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
 import {
+  analyzeHookAI,
   generateCharacterReferenceAI,
   generateKidsStoryAI,
   generateNarrationAudioAI,
   generateSceneImageAI,
   generateSocialMetaAI,
+  generateTitleVariantsAI,
+  generateTrendIdeasAI,
 } from './src/server/geminiService';
 import {
   disconnect,
@@ -82,6 +85,29 @@ function apiServerPlugin(): Plugin {
             const body = await parseBody();
             const platforms = await generateSocialMetaAI(body);
             return send(200, { success: true, platforms });
+          }
+
+          if (url === '/api/gemini/trends' && req.method === 'POST') {
+            const body = await parseBody();
+            const ideas = await generateTrendIdeasAI(body.count || 5, body.language);
+            return send(200, { success: true, ideas });
+          }
+
+          if (url === '/api/gemini/analyze-hook' && req.method === 'POST') {
+            const body = await parseBody();
+            const result = await analyzeHookAI(body.hook || '', body.theme || '', body.language);
+            return send(200, { success: true, ...result });
+          }
+
+          if (url === '/api/gemini/title-variants' && req.method === 'POST') {
+            const body = await parseBody();
+            const titles = await generateTitleVariantsAI(
+              body.title || '',
+              body.theme || '',
+              body.count || 4,
+              body.language
+            );
+            return send(200, { success: true, titles });
           }
 
           if (url === '/api/gemini/generate-audio' && req.method === 'POST') {

@@ -2,11 +2,14 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
+  analyzeHookAI,
   generateCharacterReferenceAI,
   generateKidsStoryAI,
   generateNarrationAudioAI,
   generateSceneImageAI,
   generateSocialMetaAI,
+  generateTitleVariantsAI,
+  generateTrendIdeasAI,
 } from './src/server/geminiService.js';
 import {
   disconnect,
@@ -67,6 +70,38 @@ app.post('/api/gemini/generate-meta', async (req, res) => {
     res.json({ success: true, platforms });
   } catch (error: any) {
     res.status(500).json({ error: error?.message || 'Error generando la metadata' });
+  }
+});
+
+app.post('/api/gemini/trends', async (req, res) => {
+  try {
+    const ideas = await generateTrendIdeasAI(req.body.count || 5, req.body.language);
+    res.json({ success: true, ideas });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Error generando ideas' });
+  }
+});
+
+app.post('/api/gemini/analyze-hook', async (req, res) => {
+  try {
+    const result = await analyzeHookAI(req.body.hook || '', req.body.theme || '', req.body.language);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Error analizando el gancho' });
+  }
+});
+
+app.post('/api/gemini/title-variants', async (req, res) => {
+  try {
+    const titles = await generateTitleVariantsAI(
+      req.body.title || '',
+      req.body.theme || '',
+      req.body.count || 4,
+      req.body.language
+    );
+    res.json({ success: true, titles });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Error generando títulos' });
   }
 });
 

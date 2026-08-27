@@ -441,6 +441,143 @@ export async function generateSocialMetaAI(payload: SocialMetaPayload) {
 }
 
 // ------------------------------------------------------------
+// 4. Crecimiento viral: tendencias, análisis del gancho y variantes A/B
+// ------------------------------------------------------------
+
+const trendSchema = {
+  type: Type.OBJECT,
+  properties: {
+    ideas: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          theme: { type: Type.STRING, description: 'Idea de tema para el cuento.' },
+          hook: { type: Type.STRING, description: 'Gancho corto sugerido.' },
+          reason: { type: Type.STRING, description: 'Por qué tiene potencial viral.' },
+        },
+        required: ['theme', 'hook', 'reason'],
+      },
+    },
+  },
+  required: ['ideas'],
+};
+
+/** Sugiere ideas de cuentos con potencial viral. */
+export async function generateTrendIdeasAI(count: number, language = 'español') {
+  const ai = getClient();
+  const n = clampNumber(count || 5, 3, 10);
+  const prompt = [
+    `Eres experto en contenido infantil viral para Shorts/Reels.`,
+    `Sugiere ${n} ideas de cuentos infantiles en ${language} con alto potencial de retención y que sean apropiados para niños.`,
+    `Cada idea: un tema concreto, un gancho corto y el motivo de su potencial viral.`,
+    `Evita temas repetidos; busca variedad (animales, emociones, aventuras, valores).`,
+  ].join('\n');
+
+  const response = await ai.models.generateContent({
+    model: TEXT_MODEL,
+    contents: prompt,
+    config: { responseMimeType: 'application/json', responseSchema: trendSchema, temperature: 1 },
+  });
+
+  const raw = response.text;
+  if (!raw) throw new Error('Gemini no devolvió ideas.');
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('Las ideas no son un JSON válido.');
+  }
+  const ideas = Array.isArray(parsed?.ideas) ? parsed.ideas : [];
+  return ideas.map((i: any) => ({
+    theme: String(i?.theme || ''),
+    hook: String(i?.hook || ''),
+    reason: String(i?.reason || ''),
+  }));
+}
+
+const hookSchema = {
+  type: Type.OBJECT,
+  properties: {
+    score: { type: Type.NUMBER, description: 'Puntuación 0-100 del gancho.' },
+    feedback: { type: Type.STRING, description: 'Análisis breve del gancho.' },
+    improvedHook: { type: Type.STRING, description: 'Versión mejorada del gancho.' },
+  },
+  required: ['score', 'feedback', 'improvedHook'],
+};
+
+/** Analiza el gancho inicial y propone una versión mejorada. */
+export async function analyzeHookAI(hook: string, theme: string, language = 'español') {
+  const ai = getClient();
+  const prompt = [
+    `Eres experto en retención en los primeros 3 segundos de un video vertical infantil.`,
+    `Analiza este gancho (en ${language}) para un cuento sobre "${theme}": "${hook}".`,
+    `Puntúa de 0 a 100 su capacidad de retener la atención, da feedback breve y una versión mejorada.`,
+  ].join('\n');
+
+  const response = await ai.models.generateContent({
+    model: TEXT_MODEL,
+    contents: prompt,
+    config: { responseMimeType: 'application/json', responseSchema: hookSchema, temperature: 0.7 },
+  });
+
+  const raw = response.text;
+  if (!raw) throw new Error('Gemini no devolvió análisis.');
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('El análisis no es un JSON válido.');
+  }
+  return {
+    score: clampNumber(Number(parsed?.score ?? 0), 0, 100),
+    feedback: String(parsed?.feedback || ''),
+    improvedHook: String(parsed?.improvedHook || ''),
+  };
+}
+
+const titlesSchema = {
+  type: Type.OBJECT,
+  properties: {
+    titles: { type: Type.ARRAY, items: { type: Type.STRING } },
+  },
+  required: ['titles'],
+};
+
+/** Genera variantes A/B de título para probar cuál funciona mejor. */
+export async function generateTitleVariantsAI(
+  currentTitle: string,
+  theme: string,
+  count = 4,
+  language = 'español'
+) {
+  const ai = getClient();
+  const n = clampNumber(count || 4, 2, 8);
+  const prompt = [
+    `Genera ${n} variantes de título en ${language} para un cuento infantil viral.`,
+    `Tema: "${theme}". Título actual: "${currentTitle}".`,
+    `Varía el estilo: con emoji, con pregunta, con número, con intriga. Cortos y llamativos.`,
+  ].join('\n');
+
+  const response = await ai.models.generateContent({
+    model: TEXT_MODEL,
+    contents: prompt,
+    config: { responseMimeType: 'application/json', responseSchema: titlesSchema, temperature: 1 },
+  });
+
+  const raw = response.text;
+  if (!raw) throw new Error('Gemini no devolvió títulos.');
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('Los títulos no son un JSON válido.');
+  }
+  const titles = Array.isArray(parsed?.titles) ? parsed.titles : [];
+  return titles.map((t: any) => String(t)).filter(Boolean);
+}
+
+// ------------------------------------------------------------
 // Utilidades
 // ------------------------------------------------------------
 

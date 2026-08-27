@@ -7,6 +7,7 @@ import { AlertTriangle, BookOpenText, CalendarDays, Film, Link as LinkIcon, Mic,
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CharacterGallery } from './components/CharacterGallery';
 import { FinalPanel } from './components/FinalPanel';
+import { GrowthTools } from './components/GrowthTools';
 import { MusicPicker } from './components/MusicPicker';
 import { SceneEditor } from './components/SceneEditor';
 import { StoryForm } from './components/StoryForm';
@@ -194,6 +195,22 @@ export default function App() {
 
   const removeReused = (id: string) => {
     setReusedCharacters((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  // ---- Series: crear el siguiente episodio con los mismos personajes ----
+  const startNextEpisode = () => {
+    if (!story) return;
+    const reused: SavedCharacter[] = story.characters.map((c) => ({
+      id: `ep_${Date.now()}_${c.id}`,
+      name: c.name,
+      description: c.description,
+      voiceName: c.voiceName,
+      voiceTone: c.voiceTone,
+      referenceImage: c.referenceImage,
+      createdAt: Date.now(),
+    }));
+    setReusedCharacters(reused);
+    setStage('create');
   };
 
   // ---- Narración por voz IA ----
@@ -457,6 +474,16 @@ export default function App() {
                         <span className="font-semibold">🌟 Moraleja:</span> {story.moral}
                       </p>
                     )}
+                    <Button
+                      variant="secondary"
+                      onClick={startNextEpisode}
+                      className="mt-3 !py-2 text-sm"
+                    >
+                      <BookOpenText className="h-4 w-4" /> Crear episodio siguiente
+                    </Button>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Reutiliza estos personajes para una nueva historia (serie).
+                    </p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
                       <span className="rounded-full bg-slate-100 px-3 py-1">
                         {story.scenes.length} escenas
@@ -476,7 +503,10 @@ export default function App() {
 
             {tab === 'editar' && (
               <div className="grid gap-6 lg:grid-cols-2">
-                <SceneEditor story={story} onChange={updateStory} />
+                <div className="space-y-6">
+                  <SceneEditor story={story} onChange={updateStory} />
+                  <GrowthTools story={story} onUpdateStory={updateStory} />
+                </div>
 
                 <Card>
                   <h3 className="mb-1 flex items-center gap-2 font-['Fredoka',sans-serif] text-lg font-bold text-slate-800">

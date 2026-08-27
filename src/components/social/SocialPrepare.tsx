@@ -86,7 +86,7 @@ export function SocialPrepare({
           moral: story.moral,
           ageRange: story.ageRange,
           platforms: selected,
-          language: 'español',
+          language: story.language || 'español',
         });
         for (const m of metas) {
           if (selected.includes(m.platform)) perPlatform[m.platform] = m;
