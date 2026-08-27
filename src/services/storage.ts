@@ -116,3 +116,30 @@ export function getBranding(): Branding {
 export function saveBranding(branding: Branding): void {
   write(BRANDING_KEY, branding);
 }
+
+// -------- Exportar/Importar todo (para sincronización en la nube) --------
+
+export interface StorageSnapshot {
+  stories: Story[];
+  characters: SavedCharacter[];
+  calendar: CalendarEntry[];
+  branding: Branding;
+  updatedAt: number;
+}
+
+export function exportAll(): StorageSnapshot {
+  return {
+    stories: read<Story[]>(STORIES_KEY, []),
+    characters: read<SavedCharacter[]>(CHARACTERS_KEY, []),
+    calendar: read<CalendarEntry[]>(CALENDAR_KEY, []),
+    branding: getBranding(),
+    updatedAt: Date.now(),
+  };
+}
+
+export function importAll(snapshot: Partial<StorageSnapshot>): void {
+  if (snapshot.stories) write(STORIES_KEY, snapshot.stories);
+  if (snapshot.characters) write(CHARACTERS_KEY, snapshot.characters);
+  if (snapshot.calendar) write(CALENDAR_KEY, snapshot.calendar);
+  if (snapshot.branding) write(BRANDING_KEY, snapshot.branding);
+}

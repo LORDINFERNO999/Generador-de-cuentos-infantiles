@@ -211,11 +211,17 @@ export async function disconnectAccount(platform: SocialPlatform): Promise<void>
   await postJson(`/api/social/disconnect/${platform}`, {});
 }
 
-/** Intenta publicar directamente (respuesta honesta del backend). */
+/**
+ * Intenta publicar directamente. Para YouTube envía el video (base64) para
+ * la subida real; el backud nunca finge una publicación.
+ */
 export async function publishDirect(input: {
   platform: SocialPlatform;
   title: string;
   description: string;
+  tags?: string[];
+  videoBase64?: string;
+  videoMimeType?: string;
 }): Promise<{ success: boolean; message: string; postUrl?: string }> {
   return postJson('/api/social/publish', input);
 }

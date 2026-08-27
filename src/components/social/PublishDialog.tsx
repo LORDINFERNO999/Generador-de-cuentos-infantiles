@@ -34,7 +34,29 @@ export function PublishDialog({ platform, pkg, onClose }: Props) {
     setPublishing(true);
     setResult(null);
     try {
-      const res = await publishDirect({ platform, title, description });
+      // Convertir el video (objectURL) a base64 para la subida real.
+      let videoBase64: string | undefined;
+      if (pkg.videoUrl) {
+        const blob = await fetch(pkg.videoUrl).then((r) => r.blob());
+        videoBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+      const tags = hashtags
+        .split(/\s+/)
+        .map((h) => h.replace(/^#/, '').trim())
+        .filter(Boolean);
+      const res = await publishDirect({
+        platform,
+        title,
+        description,
+        tags,
+        videoBase64,
+        videoMimeType: pkg.videoMimeType,
+      });
       setResult(res);
     } catch (e: any) {
       setResult({ success: false, message: e?.message || 'No se pudo publicar.' });

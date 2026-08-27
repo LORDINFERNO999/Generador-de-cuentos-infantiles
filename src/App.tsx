@@ -5,6 +5,7 @@
 
 import { AlertTriangle, BookOpenText, CalendarDays, FileText, Film, Link as LinkIcon, Mic, Pencil, Save, Share2, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AuthPanel } from './components/AuthPanel';
 import { BrandingSettings } from './components/BrandingSettings';
 import { CharacterGallery } from './components/CharacterGallery';
 import { FinalPanel } from './components/FinalPanel';
@@ -370,6 +371,14 @@ export default function App() {
                   <span>📸 Instagram Reels</span>
                 </div>
               </Card>
+
+              <AuthPanel
+                onSynced={() => {
+                  setLibraryKey((k) => k + 1);
+                  setGalleryKey((k) => k + 1);
+                  setBranding(getBranding());
+                }}
+              />
 
               <Card>
                 <h3 className="mb-3 flex items-center gap-2 font-['Fredoka',sans-serif] text-lg font-bold text-slate-800">

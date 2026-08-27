@@ -15,9 +15,32 @@ import {
   disconnect,
   getOAuthUrl,
   getSocialStatus,
+  handleOAuthCallback,
   publishDirect,
   type Platform,
 } from './src/server/socialService.js';
+
+import {
+  getUserByToken,
+  getUserData,
+  login as authLogin,
+  logout as authLogout,
+  register as authRegister,
+  setUserData,
+  tokenFromHeader,
+} from './src/server/authService.js';
+
+function oauthCloseHtml(success: boolean, message: string): string {
+  const safe = message.replace(/</g, '&lt;');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${
+    success ? 'Conectado' : 'Error'
+  }</title></head><body style="font-family:sans-serif;text-align:center;padding:40px;background:#fff7ed">
+  <h2>${success ? '✅ Cuenta conectada' : '❌ No se pudo conectar'}</h2>
+  <p>${safe}</p>
+  <p style="color:#94a3b8">Puedes cerrar esta ventana.</p>
+  <script>setTimeout(function(){window.close()},2500)</script>
+  </body></html>`;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -140,12 +163,24 @@ app.post('/api/social/disconnect/:platform', (req, res) => {
   res.json({ success: true });
 });
 
+app.get('/api/social/callback/:platform', async (req, res) => {
+  const platform = req.params.platform as Platform;
+  const code = (req.query.code as string) || '';
+  const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const result = await handleOAuthCallback(platform, code, appUrl);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(oauthCloseHtml(result.success, result.message));
+});
+
 app.post('/api/social/publish', async (req, res) => {
   try {
     const result = await publishDirect({
       platform: req.body.platform,
       title: req.body.title || '',
       description: req.body.description || '',
+      tags: req.body.tags,
+      videoBase64: req.body.videoBase64,
+      videoMimeType: req.body.videoMimeType,
     });
     res.json(result);
   } catch (error: any) {
@@ -154,6 +189,42 @@ app.post('/api/social/publish', async (req, res) => {
       message: error?.message || 'Error al intentar publicar',
     });
   }
+});
+
+// ---------------- Autenticación (genérica) ----------------
+
+app.post('/api/auth/register', (req, res) => {
+  res.json(authRegister(req.body.email || '', req.body.password || '', req.body.name || ''));
+});
+
+app.post('/api/auth/login', (req, res) => {
+  res.json(authLogin(req.body.email || '', req.body.password || ''));
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = tokenFromHeader(req.headers.authorization);
+  if (token) authLogout(token);
+  res.json({ success: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const user = getUserByToken(tokenFromHeader(req.headers.authorization));
+  res.json({ user });
+});
+
+// ---------------- Datos sincronizados por usuario ----------------
+
+app.get('/api/data', (req, res) => {
+  const user = getUserByToken(tokenFromHeader(req.headers.authorization));
+  if (!user) return res.status(401).json({ error: 'No autenticado' });
+  res.json({ data: getUserData(user.id) });
+});
+
+app.put('/api/data', (req, res) => {
+  const user = getUserByToken(tokenFromHeader(req.headers.authorization));
+  if (!user) return res.status(401).json({ error: 'No autenticado' });
+  setUserData(user.id, req.body.data);
+  res.json({ success: true });
 });
 
 // ---------------- Estáticos ----------------
